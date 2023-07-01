@@ -47,8 +47,8 @@ with open(music_vocab_list_path, 'rb') as handle:
 augmented_excel['tokens'] = tokens
 
 # Preprocessing params.
-PRETRAINING_BATCH_SIZE = 8
-FINETUNING_BATCH_SIZE = 32
+PRETRAINING_BATCH_SIZE = 16
+FINETUNING_BATCH_SIZE = 16
 SEQ_LENGTH = max_size_tokens #
 MASK_RATE = 0.25
 PREDICTIONS_PER_SEQ = 32
@@ -56,7 +56,7 @@ PREDICTIONS_PER_SEQ = 32
 # Model params.
 NUM_LAYERS = 8
 MODEL_DIM = 256
-INTERMEDIATE_DIM = 512
+INTERMEDIATE_DIM = 256
 NUM_HEADS = 8
 DROPOUT = 0.3
 EMBED_DIM = 256
@@ -67,11 +67,11 @@ MAX_SEQUENCE_LENGTH = max_size_tokens
 
 # Training params.
 PRETRAINING_LEARNING_RATE = 5e-5 # was 5e-4
-PRETRAINING_EPOCHS = 1000
+PRETRAINING_EPOCHS = 700
 FINETUNING_LEARNING_RATE = 5e-5
 FINETUNING_EPOCHS = 3
 
-BATCH_SIZE = 128
+BATCH_SIZE = 16
 
 print('padding to sequence length')
 music_texts_SEQ_LENGTH = []
@@ -104,9 +104,15 @@ year_norm = list( (year - year_min)/(year_max - year_min) )
 harmonic_style_dict, harmonic_style_idx = get_dictionary_and_idxs_from_pd_column( augmented_excel['harmonic_style'] )
 # style categories
 form_dict, form_idx = get_dictionary_and_idxs_from_pd_column( augmented_excel['form'] )
+# tonality categories
+tonality_dict, tonality_idx = get_dictionary_and_idxs_from_pd_column( augmented_excel['tonality'] )
+# composer categories
+composer_dict, composer_idx = get_dictionary_and_idxs_from_pd_column( augmented_excel['composer'] )
+# genre categories
+genre_dict, genre_idx = get_dictionary_and_idxs_from_pd_column( augmented_excel['genre_style'] )
 
 print('making dataset')
-music_train_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx) )
+music_train_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
 music_train_ds = music_train_ds.batch( BATCH_SIZE )
 
 print('making masker and data preprocessing')
@@ -118,7 +124,7 @@ masker = keras_nlp.layers.MaskedLMMaskGenerator(
 )
 
 # Create the preprosessing function that performs masking on the fly
-def preprocess(inputs, year, style, form):
+def preprocess(inputs, year, style, form, tonality, composer, genre):
     inputs = music_tokenizer( inputs )
     outputs = masker(inputs)
     # Split the masking layer outputs into a (features, labels, and weights)
@@ -130,7 +136,7 @@ def preprocess(inputs, year, style, form):
     labels = outputs["mask_ids"]
     # weights = outputs["mask_weights"]
     # return features, (year, style, form, labels), weights
-    return features, (year, style, form, labels)
+    return features, (year, style, form, tonality, composer, genre, labels)
 
 processed_ds = music_train_ds.map(
     preprocess, num_parallel_calls=tf.data.AUTOTUNE
@@ -197,6 +203,22 @@ form_output = keras.layers.Dense(256, activation='relu')(form_output)
 form_output = keras.layers.Dense(64, activation='relu', name='form_descriptor')(form_output)
 form_output = keras.layers.Dense(len(form_dict), activation='softmax', name='form_predictor')(form_output)
 
+tonality_output = keras.layers.Dense(256, activation='relu')(post_encoding_reduction)
+tonality_output = keras.layers.Dense(256, activation='relu')(tonality_output)
+tonality_output = keras.layers.Dense(64, activation='relu', name='tonality_descriptor')(tonality_output)
+tonality_output = keras.layers.Dense(len(tonality_dict), activation='softmax', name='tonality_predictor')(tonality_output)
+
+composer_output = keras.layers.Dense(512, activation='relu')(post_encoding_reduction)
+composer_output = keras.layers.Dense(512, activation='relu')(composer_output)
+composer_output = keras.layers.Dense(256, activation='relu')(composer_output)
+composer_output = keras.layers.Dense(64, activation='relu', name='composer_descriptor')(composer_output)
+composer_output = keras.layers.Dense(len(composer_dict), activation='softmax', name='composer_predictor')(composer_output)
+
+genre_output = keras.layers.Dense(256, activation='relu')(post_encoding_reduction)
+genre_output = keras.layers.Dense(256, activation='relu')(genre_output)
+genre_output = keras.layers.Dense(64, activation='relu', name='genre_descriptor')(genre_output)
+genre_output = keras.layers.Dense(len(genre_dict), activation='softmax', name='genre_predictor')(genre_output)
+
 def print_summary(s):
     with open('data/modelsummary.txt','a') as f:
         print(s, file=f)
@@ -208,10 +230,10 @@ mask_output = keras_nlp.layers.MaskedLMHead(
     name='mask_predictor'
 )(encoded_tokens, mask_positions=inputs["mask_positions"])
 
-model = keras.Model(inputs, outputs=[year_output, style_output, form_output, mask_output])
+model = keras.Model(inputs, outputs=[year_output, style_output, form_output, tonality_output, composer_output, genre_output, mask_output])
 
 model.compile(
-    loss=["mean_squared_error", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy"],
+    loss=["mean_squared_error", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy", "sparse_categorical_crossentropy"],
     optimizer=keras.optimizers.experimental.AdamW(PRETRAINING_LEARNING_RATE),
     weighted_metrics=["sparse_categorical_accuracy"],
     jit_compile=True,
@@ -226,6 +248,8 @@ checkpoint_dir = os.path.dirname(checkpoint_path)
 
 # Create a callback that saves the model's weights
 cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                 monitor='loss',
+                                                 save_best_only=True,
                                                  save_weights_only=True,
                                                  verbose=1)
 

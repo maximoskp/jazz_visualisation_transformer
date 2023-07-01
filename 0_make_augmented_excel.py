@@ -24,7 +24,7 @@ loaded_excel = pd.read_excel(songs_excel_path)
 loaded_excel = loaded_excel.set_index('Title')
 
 print('making useful excel - discarding nans')
-useful_columns_excel = loaded_excel.drop(['original_string','original_key','appearing_name', 'is_favourite', 'composer','performed_by'], axis=1)
+useful_columns_excel = loaded_excel.drop(['original_string','original_key','appearing_name', 'is_favourite','performed_by'], axis=1)
 useful_excel = useful_columns_excel.dropna()
 
 root_names = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
