@@ -105,6 +105,11 @@ def get_dictionary_and_idxs_from_pd_column( c ):
     c_idx = [ c_dict.index(s) for s in c_list ]
     return c_dict, c_idx
 
+def get_idxs_from_pd_column_and_dictionary( c , d ):
+    c_list = c.to_list()
+    c_idx = [ d.index(s) for s in c_list ]
+    return c_idx
+
 print('making target vectors')
 # normalized year data
 year = useful_excel['composition_date'].to_numpy()
@@ -112,15 +117,20 @@ year_min = np.min(year)
 year_max = np.max(year)
 year_norm = list( (year - year_min)/(year_max - year_min) )
 # style categories
-harmonic_style_dict, harmonic_style_idx = get_dictionary_and_idxs_from_pd_column( useful_excel['harmonic_style'] )
+harmonic_style_dict, _ = get_dictionary_and_idxs_from_pd_column( augmented_excel['harmonic_style'] )
+harmonic_style_idx = get_idxs_from_pd_column_and_dictionary( useful_excel['harmonic_style'] , harmonic_style_dict )
 # style categories
-form_dict, form_idx = get_dictionary_and_idxs_from_pd_column( useful_excel['form'] )
+form_dict, _ = get_dictionary_and_idxs_from_pd_column( augmented_excel['form'] )
+form_idx = get_idxs_from_pd_column_and_dictionary( useful_excel['form'] , form_dict )
 # tonality categories
-tonality_dict, tonality_idx = get_dictionary_and_idxs_from_pd_column( useful_excel['tonality'] )
+tonality_dict, _ = get_dictionary_and_idxs_from_pd_column( augmented_excel['tonality'] )
+tonality_idx = get_idxs_from_pd_column_and_dictionary( useful_excel['tonality'] , tonality_dict )
 # composer categories
-composer_dict, composer_idx = get_dictionary_and_idxs_from_pd_column( useful_excel['composer'] )
+composer_dict, _ = get_dictionary_and_idxs_from_pd_column( augmented_excel['composer'] )
+composer_idx = get_idxs_from_pd_column_and_dictionary( useful_excel['composer'] , composer_dict )
 # genre categories
-genre_dict, genre_idx = get_dictionary_and_idxs_from_pd_column( useful_excel['genre_style'] )
+genre_dict, _ = get_dictionary_and_idxs_from_pd_column( augmented_excel['genre_style'] )
+genre_idx = get_idxs_from_pd_column_and_dictionary( useful_excel['genre_style'] , genre_dict )
 
 print('making dataset')
 music_train_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
@@ -217,7 +227,7 @@ form_output = keras.layers.Dense(len(form_dict), activation='softmax', name='for
 tonality_output1 = keras.layers.Dense(256, activation='relu')(post_encoding_reduction)
 tonality_output1 = keras.layers.Dense(256, activation='relu')(tonality_output1)
 tonality_output1 = keras.layers.Dense(64, activation='relu', name='tonality_descriptor')(tonality_output1)
-tonality_output = keras.layers.Dense(24, activation='softmax', name='tonality_predictor')(tonality_output1)
+tonality_output = keras.layers.Dense(len(tonality_dict), activation='softmax', name='tonality_predictor')(tonality_output1)
 
 composer_output1 = keras.layers.Dense(512, activation='relu')(post_encoding_reduction)
 composer_output1 = keras.layers.Dense(512, activation='relu')(composer_output1)
@@ -289,7 +299,7 @@ with open('figs/stats_mask.txt', 'w') as f:
     print( 'harmonic style accuracy: ' + str(np.sum( np.array(harmonic_style_idx) == np.argmax(y[1], axis=1) ) / len(harmonic_style_idx)), file=f )
 plt.clf()
 plt.plot(harmonic_style_idx, 'bo')
-plt.plot(np.argmax(y[1], axis=1), 'rx')
+plt.plot(np.argmax(y[1], axis=1), 'rx', alpha=0.5)
 plt.savefig('figs/harmonic_style_accuracy.png', dpi=300)
 
 print('plotting form - stats')
@@ -308,12 +318,14 @@ plt.plot(tonality_idx, 'bo')
 plt.plot(np.argmax(y[3], axis=1), 'rx')
 plt.savefig('figs/tonality_idx_accuracy.png', dpi=300)
 
+# sort composers and keep indexes
+sort_composers_norm_idx = np.argsort( composer_idx )
 print('plotting composer - stats')
 with open('figs/stats_mask.txt', 'a') as f:
     print( '\n' + 'composer accuracy: ' + str(np.sum( np.array(composer_idx) == np.argmax(y[4], axis=1) ) / len(composer_idx)), file=f )
 plt.clf()
-plt.plot(composer_idx, 'bo')
-plt.plot(np.argmax(y[4], axis=1), 'rx')
+plt.plot(np.array(composer_idx)[sort_composers_norm_idx], 'bo')
+plt.plot(np.argmax(y[4][sort_composers_norm_idx], axis=1), 'rx')
 plt.savefig('figs/composer_idx_accuracy.png', dpi=300)
 
 print('plotting genre - stats')
@@ -388,3 +400,37 @@ ax.figure.savefig('figs/history_losses.png', dpi=300)
 
 ax = history.plot(x='epoch', y=['form_predictor_sparse_categorical_accuracy', 'style_predictor_sparse_categorical_accuracy', 'tonality_predictor_sparse_categorical_accuracy', 'composer_predictor_sparse_categorical_accuracy', 'genre_predictor_sparse_categorical_accuracy', 'mask_predictor_sparse_categorical_accuracy'])
 ax.figure.savefig('figs/history_accuracies.png', dpi=300)
+
+print('exporting data')
+
+mask_visualization_data = {
+    'year': {
+        'coordinates': year_embedded,
+        'colors': year_cols
+    },
+    'style': {
+        'coordinates': harmonic_style_embedded,
+        'colors': harmonic_style_cols
+    },
+    'form': {
+        'coordinates': form_embedded,
+        'colors': form_cols
+    },
+    'tonality': {
+        'coordinates': tonality_embedded,
+        'colors': tonality_cols
+    },
+    'composer': {
+        'coordinates': composer_embedded,
+        'colors': composer_cols
+    },
+    'genre': {
+        'coordinates': genre_embedded,
+        'colors': genre_cols
+    },
+    'titles': list(useful_excel['Title'])
+}
+
+visualization_data_path =  'data/mask_visualization_data.pickle'
+with open(visualization_data_path, 'wb') as handle:
+    pickle.dump(mask_visualization_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
