@@ -35,6 +35,8 @@ augmented_excel_path = 'data/augmented_excel.csv'
 music_vocab_list_path = 'data/music_vocab_list.pickle'
 tokens_path = 'data/tokens.pickle'
 
+figs_path = figs_path + 'full_train/'
+
 print('reading augmented excel, tokens and vocabulary')
 augmented_excel = pd.read_csv(augmented_excel_path)
 useful_excel = augmented_excel[ augmented_excel['is_original_tonality'] ]
@@ -191,7 +193,7 @@ for i in range(NUM_LAYERS):
 encoder_model = keras.Model(inputs, outputs)
 # encoder_model.summary()
 
-tf.keras.utils.plot_model(encoder_model, show_shapes=True, expand_nested=True, to_file='figs/transformer_base.png')
+tf.keras.utils.plot_model(encoder_model, show_shapes=True, expand_nested=True, to_file=figs_path + 'transformer_base.png')
 
 print('creating model')
 # Create the pretraining model by attaching a masked language model head.
@@ -268,8 +270,8 @@ model.compile(
 )
 model.summary(print_fn=print_summary)
 
-tf.keras.utils.plot_model(model, show_shapes=True, expand_nested=True, to_file='figs/model_expanded.png')
-tf.keras.utils.plot_model(model, show_shapes=True, expand_nested=False, to_file='figs/model_compressed.png')
+tf.keras.utils.plot_model(model, show_shapes=True, expand_nested=True, to_file=figs_path + 'model_expanded.png')
+tf.keras.utils.plot_model(model, show_shapes=True, expand_nested=False, to_file=figs_path + 'model_compressed.png')
 
 print('initializing checkpoint and logger')
 checkpoint_dir = os.path.dirname(checkpoint_path)
@@ -292,49 +294,49 @@ print('plotting year - stats')
 plt.clf()
 plt.plot(np.array(year_norm)[sort_year_norm_idx], 'b')
 plt.plot(y[0][sort_year_norm_idx], 'rx')
-plt.savefig('figs/year_sort_plot.png', dpi=300)
+plt.savefig(figs_path + 'year_sort_plot.png', dpi=300)
 
 print('plotting harmonic style - stats')
-with open('figs/stats_mask.txt', 'w') as f:
+with open(figs_path + 'stats_mask.txt', 'w') as f:
     print( 'harmonic style accuracy: ' + str(np.sum( np.array(harmonic_style_idx) == np.argmax(y[1], axis=1) ) / len(harmonic_style_idx)), file=f )
 plt.clf()
 plt.plot(harmonic_style_idx, 'bo')
 plt.plot(np.argmax(y[1], axis=1), 'rx', alpha=0.5)
-plt.savefig('figs/harmonic_style_accuracy.png', dpi=300)
+plt.savefig(figs_path + 'harmonic_style_accuracy.png', dpi=300)
 
 print('plotting form - stats')
-with open('figs/stats_mask.txt', 'a') as f:
+with open(figs_path + 'stats_mask.txt', 'a') as f:
     print( '\n' + 'form accuracy: ' + str(np.sum( np.array(form_idx) == np.argmax(y[2], axis=1) ) / len(form_idx)), file=f )
 plt.clf()
 plt.plot(form_idx, 'bo')
 plt.plot(np.argmax(y[2], axis=1), 'rx')
-plt.savefig('figs/harmonic_style_accuracy.png', dpi=300)
+plt.savefig(figs_path + 'harmonic_style_accuracy.png', dpi=300)
 
 print('plotting tonality - stats')
-with open('figs/stats_mask.txt', 'a') as f:
+with open(figs_path + 'stats_mask.txt', 'a') as f:
     print( '\n' + 'tonality accuracy: ' + str(np.sum( np.array(tonality_idx) == np.argmax(y[3], axis=1) ) / len(tonality_idx)), file=f )
 plt.clf()
 plt.plot(tonality_idx, 'bo')
 plt.plot(np.argmax(y[3], axis=1), 'rx')
-plt.savefig('figs/tonality_idx_accuracy.png', dpi=300)
+plt.savefig(figs_path + 'tonality_idx_accuracy.png', dpi=300)
 
 # sort composers and keep indexes
 sort_composers_norm_idx = np.argsort( composer_idx )
 print('plotting composer - stats')
-with open('figs/stats_mask.txt', 'a') as f:
+with open(figs_path + 'stats_mask.txt', 'a') as f:
     print( '\n' + 'composer accuracy: ' + str(np.sum( np.array(composer_idx) == np.argmax(y[4], axis=1) ) / len(composer_idx)), file=f )
 plt.clf()
 plt.plot(np.array(composer_idx)[sort_composers_norm_idx], 'bo')
 plt.plot(np.argmax(y[4][sort_composers_norm_idx], axis=1), 'rx')
-plt.savefig('figs/composer_idx_accuracy.png', dpi=300)
+plt.savefig(figs_path + 'composer_idx_accuracy.png', dpi=300)
 
 print('plotting genre - stats')
-with open('figs/stats_mask.txt', 'a') as f:
+with open(figs_path + 'stats_mask.txt', 'a') as f:
     print( '\n' + 'genre accuracy: ' + str(np.sum( np.array(genre_idx) == np.argmax(y[5], axis=1) ) / len(genre_idx)), file=f )
 plt.clf()
 plt.plot(genre_idx, 'bo')
 plt.plot(np.argmax(y[5], axis=1), 'rx')
-plt.savefig('figs/genre_idx_accuracy.png', dpi=300)
+plt.savefig(figs_path + 'genre_idx_accuracy.png', dpi=300)
 
 print('year predict - TSNE plot')
 y_year = model_year.predict( processed_ds )
@@ -343,7 +345,7 @@ plt.clf()
 year_cols = cm.rainbow(year_norm)
 for i in range(year_embedded.shape[0]):
     plt.plot(year_embedded[i,0], year_embedded[i,1],'x', c=year_cols[i])
-plt.savefig('figs/year_TSNE.png', dpi=300)
+plt.savefig(figs_path + 'year_TSNE.png', dpi=300)
 
 print('harmonic style predict - TSNE plot')
 y_harmonic_style = model_style.predict( processed_ds )
@@ -352,7 +354,7 @@ plt.clf()
 harmonic_style_cols = cm.rainbow(harmonic_style_idx/np.max(harmonic_style_idx))
 for i in range(harmonic_style_embedded.shape[0]):
     plt.plot(harmonic_style_embedded[i,0], harmonic_style_embedded[i,1],'x', c=harmonic_style_cols[i])
-plt.savefig('figs/harmonic_style_TSNE.png', dpi=300)
+plt.savefig(figs_path + 'harmonic_style_TSNE.png', dpi=300)
 
 print('form predict - TSNE plot')
 y_form = model_form.predict( processed_ds )
@@ -361,7 +363,7 @@ plt.clf()
 form_cols = cm.rainbow(form_idx/np.max(form_idx))
 for i in range(form_embedded.shape[0]):
     plt.plot(form_embedded[i,0], form_embedded[i,1],'x', c=form_cols[i])
-plt.savefig('figs/form_TSNE.png', dpi=300)
+plt.savefig(figs_path + 'form_TSNE.png', dpi=300)
 
 print('tonality predict - TSNE plot')
 y_tonality = model_tonality.predict( processed_ds )
@@ -370,7 +372,7 @@ plt.clf()
 tonality_cols = cm.rainbow(tonality_idx/np.max(tonality_idx))
 for i in range(tonality_embedded.shape[0]):
     plt.plot(tonality_embedded[i,0], tonality_embedded[i,1],'x', c=tonality_cols[i])
-plt.savefig('figs/tonality_TSNE.png', dpi=300)
+plt.savefig(figs_path + 'tonality_TSNE.png', dpi=300)
 
 print('composer predict - TSNE plot')
 y_composer = model_composer.predict( processed_ds )
@@ -379,7 +381,7 @@ plt.clf()
 composer_cols = cm.rainbow(composer_idx/np.max(composer_idx))
 for i in range(composer_embedded.shape[0]):
     plt.plot(composer_embedded[i,0], composer_embedded[i,1],'x', c=composer_cols[i])
-plt.savefig('figs/composer_TSNE.png', dpi=300)
+plt.savefig(figs_path + 'composer_TSNE.png', dpi=300)
 
 print('genre predict - TSNE plot')
 y_genre = model_genre.predict( processed_ds )
@@ -388,7 +390,7 @@ plt.clf()
 genre_cols = cm.rainbow(genre_idx/np.max(genre_idx))
 for i in range(genre_embedded.shape[0]):
     plt.plot(genre_embedded[i,0], genre_embedded[i,1],'x', c=genre_cols[i])
-plt.savefig('figs/genre_TSNE.png', dpi=300)
+plt.savefig(figs_path + 'genre_TSNE.png', dpi=300)
 
 print('plotting history')
 import copy
@@ -396,10 +398,10 @@ history_normalized = copy.deepcopy(history)
 for l in ['year_predictor_loss','form_predictor_loss','style_predictor_loss', 'tonality_predictor_loss', 'composer_predictor_loss', 'genre_predictor_loss', 'mask_predictor_loss']:
     history_normalized[l] = history_normalized[l]/np.max(history_normalized[l])
 ax = history_normalized.plot(x='epoch', y=['year_predictor_loss', 'form_predictor_loss', 'style_predictor_loss', 'tonality_predictor_loss', 'composer_predictor_loss', 'genre_predictor_loss', 'mask_predictor_loss'])
-ax.figure.savefig('figs/history_losses.png', dpi=300)
+ax.figure.savefig(figs_path + 'history_losses.png', dpi=300)
 
 ax = history.plot(x='epoch', y=['form_predictor_sparse_categorical_accuracy', 'style_predictor_sparse_categorical_accuracy', 'tonality_predictor_sparse_categorical_accuracy', 'composer_predictor_sparse_categorical_accuracy', 'genre_predictor_sparse_categorical_accuracy', 'mask_predictor_sparse_categorical_accuracy'])
-ax.figure.savefig('figs/history_accuracies.png', dpi=300)
+ax.figure.savefig(figs_path + 'history_accuracies.png', dpi=300)
 
 print('exporting data')
 
