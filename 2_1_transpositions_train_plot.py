@@ -433,6 +433,6 @@ mask_visualization_data = {
     'titles': list(useful_excel['Title'])
 }
 
-visualization_data_path =  'data/mask_visualization_data.pickle'
+visualization_data_path =  'data/transposition_visualization_data.pickle'
 with open(visualization_data_path, 'wb') as handle:
     pickle.dump(mask_visualization_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
