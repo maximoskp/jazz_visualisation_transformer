@@ -35,7 +35,7 @@ augmented_excel_path = 'data/augmented_excel.csv'
 music_vocab_list_path = 'data/music_vocab_list.pickle'
 tokens_path = 'data/tokens.pickle'
 
-figs_path = figs_path + 'full_train/'
+figs_path = 'figs/full_train/'
 
 print('reading augmented excel, tokens and vocabulary')
 augmented_excel = pd.read_csv(augmented_excel_path)
