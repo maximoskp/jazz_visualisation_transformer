@@ -47,11 +47,16 @@ def kabsch_umeyama(A, B):
 with open('data/transposition_visualization_data.pickle', 'rb') as handle:
     mask_visualization_data = pickle.load(handle)
 
+with open('data/no_mask_visualization_data.pickle', 'rb') as handle:
+    no_mask_visualization_data = pickle.load(handle)
+
 # align all with year
 kz = ['style', 'form', 'tonality', 'composer', 'genre']
 
 mask_rotated_visualization_data = deepcopy(mask_visualization_data)
+no_mask_rotated_visualization_data = deepcopy(no_mask_visualization_data)
 
+# first rotate mask data
 a = mask_visualization_data['year']['coordinates']
 for k in kz:
     b = mask_visualization_data[k]['coordinates']
@@ -63,3 +68,17 @@ for k in kz:
 visualization_data_path =  'data/mask_rotated_visualization_data.pickle'
 with open(visualization_data_path, 'wb') as handle:
     pickle.dump(mask_rotated_visualization_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+# then rotate no mask data
+a = no_mask_visualization_data['year']['coordinates']
+for k in kz:
+    b = no_mask_visualization_data[k]['coordinates']
+    R, c, t = kabsch_umeyama(a, b)
+    # b = np.array([t + c * R @ b_line for b_line in b]) # translation, scaling and rotation
+    b = np.array([R @ b_line for b_line in b]) # rotation only
+    no_mask_rotated_visualization_data[k]['coordinates'] = b
+
+visualization_data_path =  'data/no_mask_rotated_visualization_data.pickle'
+with open(visualization_data_path, 'wb') as handle:
+    pickle.dump(no_mask_rotated_visualization_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
