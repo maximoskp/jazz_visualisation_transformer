@@ -51,13 +51,15 @@ with open('data/no_mask_visualization_data.pickle', 'rb') as handle:
     no_mask_visualization_data = pickle.load(handle)
 
 # align all with year
-kz = ['style', 'form', 'tonality', 'composer', 'genre']
+kz_mask = ['style', 'form', 'tonality', 'composer', 'genre', 'post_encoding']
+kz_no_mask = ['style', 'form', 'tonality', 'composer', 'genre']
 
 mask_rotated_visualization_data = deepcopy(mask_visualization_data)
 no_mask_rotated_visualization_data = deepcopy(no_mask_visualization_data)
 
 # first rotate mask data
 a = mask_visualization_data['year']['coordinates']
+kz = kz_mask
 for k in kz:
     b = mask_visualization_data[k]['coordinates']
     R, c, t = kabsch_umeyama(a, b)
@@ -72,6 +74,7 @@ with open(visualization_data_path, 'wb') as handle:
 
 # then rotate no mask data
 a = no_mask_visualization_data['year']['coordinates']
+kz = kz_no_mask
 for k in kz:
     b = no_mask_visualization_data[k]['coordinates']
     R, c, t = kabsch_umeyama(a, b)

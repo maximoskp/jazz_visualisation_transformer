@@ -255,6 +255,7 @@ mask_output = keras_nlp.layers.MaskedLMHead(
 
 model = keras.Model(inputs, outputs=[year_output, style_output, form_output, tonality_output, composer_output, genre_output, mask_output])
 
+model_post_encoding = keras.Model(inputs, outputs=post_encoding_reduction)
 model_year = keras.Model(inputs, outputs=year_output1)
 model_style = keras.Model(inputs, outputs=style_output1)
 model_form = keras.Model(inputs, outputs=form_output1)
@@ -343,6 +344,18 @@ plt.plot(genre_idx, 'bo')
 plt.plot(np.argmax(y[5], axis=1), 'rx')
 plt.savefig(figs_path + 'genre_idx_accuracy.png', dpi=300)
 
+print('post encoding - TSNE plot')
+y_post_encoding = model_style.predict( processed_ds )
+post_encoding_embedded = TSNE(n_components=2).fit_transform(y_post_encoding)
+plt.clf()
+post_encoding_cols = cm.rainbow(np.zeros(post_encoding_embedded.shape[0]))
+for i in range(post_encoding_embedded.shape[0]):
+    plt.plot(post_encoding_embedded[i,0], post_encoding_embedded[i,1],'x', c=post_encoding_cols[i])
+ax = plt.gca()
+ax.set_xticks([])
+ax.set_yticks([])
+plt.savefig(figs_path + 'post_encoding_TSNE.png', dpi=300)
+
 print('year predict - TSNE plot')
 y_year = model_year.predict( processed_ds )
 year_embedded = TSNE(n_components=2).fit_transform(y_year)
@@ -426,9 +439,31 @@ ax.figure.savefig(figs_path + 'history_losses.png', dpi=300)
 ax = history.plot(x='epoch', y=['form_predictor_sparse_categorical_accuracy', 'style_predictor_sparse_categorical_accuracy', 'tonality_predictor_sparse_categorical_accuracy', 'composer_predictor_sparse_categorical_accuracy', 'genre_predictor_sparse_categorical_accuracy', 'mask_predictor_sparse_categorical_accuracy'])
 ax.figure.savefig(figs_path + 'history_accuracies.png', dpi=300)
 
+# history loss of train / validation for year
+history_train_validation_year = pd.DataFrame()
+history_train_validation_year['epoch'] = history['epoch']
+for l in ['year_predictor_loss', 'val_year_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss']:
+    history_train_validation_year[l] = history[l]/np.max(history[l])
+
+ax = history_train_validation_year.plot(x='epoch', y=['year_predictor_loss', 'val_year_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss'])
+ax.figure.savefig(figs_path + 'history_year_train_val_losses.png', dpi=300)
+
+# history loss of train / validation for composer
+history_train_validation_composer = pd.DataFrame()
+history_train_validation_composer['epoch'] = history['epoch']
+for l in ['composer_predictor_loss', 'val_composer_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss']:
+    history_train_validation_year[l] = history[l]/np.max(history[l])
+
+ax = history_train_validation_year.plot(x='epoch', y=['composer_predictor_loss', 'val_composer_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss'])
+ax.figure.savefig(figs_path + 'history_composer_train_val_losses.png', dpi=300)
+
 print('exporting data')
 
 mask_visualization_data = {
+    'post_encoding': {
+        'coordinates': post_encoding_embedded,
+        'colors': post_encoding_cols
+    },
     'year': {
         'coordinates': year_embedded,
         'colors': year_cols

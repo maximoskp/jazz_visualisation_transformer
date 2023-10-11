@@ -47,6 +47,7 @@ with open(music_vocab_list_path, 'rb') as handle:
 augmented_excel['tokens'] = tokens
 
 augmented_train = augmented_excel[ augmented_excel['is_original_tonality'] == False ]
+augmented_validation = augmented_excel[ augmented_excel['is_original_tonality'] ]
 
 # Preprocessing params.
 PRETRAINING_BATCH_SIZE = 16
@@ -69,7 +70,7 @@ MAX_SEQUENCE_LENGTH = max_size_tokens
 
 # Training params.
 PRETRAINING_LEARNING_RATE = 5e-5 # was 5e-4
-PRETRAINING_EPOCHS = 700
+PRETRAINING_EPOCHS = 3500
 FINETUNING_LEARNING_RATE = 5e-5
 FINETUNING_EPOCHS = 3
 
@@ -80,6 +81,12 @@ music_texts_SEQ_LENGTH = []
 for s in augmented_train['tokens']:
     residual_length = SEQ_LENGTH - len( s )
     music_texts_SEQ_LENGTH.append( s + residual_length*['[PAD]'] )
+
+# validation set
+music_texts_SEQ_LENGTH_val = []
+for s in augmented_validation['tokens']:
+    residual_length = SEQ_LENGTH - len( s )
+    music_texts_SEQ_LENGTH_val.append( s + residual_length*['[PAD]'] )
 
 print('making vocabulary')
 music_tokenizer = keras_nlp.tokenizers.WordPieceTokenizer(
@@ -113,9 +120,28 @@ composer_dict, composer_idx = get_dictionary_and_idxs_from_pd_column( augmented_
 # genre categories
 genre_dict, genre_idx = get_dictionary_and_idxs_from_pd_column( augmented_train['genre_style'] )
 
-print('making dataset')
+# validation
+# normalized year data
+year_val = augmented_validation['composition_date'].to_numpy()
+year_norm_val = list( (year_val - year_min)/(year_max - year_min) )
+# style categories
+harmonic_style_dict_val, harmonic_style_idx_val = get_dictionary_and_idxs_from_pd_column( augmented_validation['harmonic_style'] )
+# style categories
+form_dict_val, form_idx_val = get_dictionary_and_idxs_from_pd_column( augmented_validation['form'] )
+# tonality categories
+tonality_dict_val, tonality_idx_val = get_dictionary_and_idxs_from_pd_column( augmented_validation['tonality'] )
+# composer categories
+composer_dict_val, composer_idx_val = get_dictionary_and_idxs_from_pd_column( augmented_validation['composer'] )
+# genre categories
+genre_dict_val, genre_idx_val = get_dictionary_and_idxs_from_pd_column( augmented_validation['genre_style'] )
+
+print('making training dataset')
 music_train_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
 music_train_ds = music_train_ds.batch( BATCH_SIZE )
+
+print('making validation dataset')
+music_val_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH_val, year_norm_val, harmonic_style_idx_val, form_idx_val, tonality_idx_val, composer_idx_val, genre_idx_val) )
+music_val_ds = music_val_ds.batch( BATCH_SIZE )
 
 print('making masker and data preprocessing')
 masker = keras_nlp.layers.MaskedLMMaskGenerator(
@@ -141,6 +167,10 @@ def preprocess(inputs, year, style, form, tonality, composer, genre):
     return features, (year, style, form, tonality, composer, genre, labels)
 
 processed_ds = music_train_ds.map(
+    preprocess, num_parallel_calls=tf.data.AUTOTUNE
+).prefetch(tf.data.AUTOTUNE)
+
+processed_ds_val = music_val_ds.map(
     preprocess, num_parallel_calls=tf.data.AUTOTUNE
 ).prefetch(tf.data.AUTOTUNE)
 
@@ -268,6 +298,7 @@ if initial_epoch > 0:
 print('starting training')
 model.fit(
     processed_ds,
+    validation_data=processed_ds_val,
     epochs=PRETRAINING_EPOCHS+initial_epoch,
     callbacks=[cp_callback, csv_logger],
     initial_epoch=initial_epoch
