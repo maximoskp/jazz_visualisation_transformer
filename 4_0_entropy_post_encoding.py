@@ -87,10 +87,17 @@ FINETUNING_EPOCHS = 3
 BATCH_SIZE = 16
 
 print('padding to sequence length')
+# create normal music and random strings
 music_texts_SEQ_LENGTH = []
+random_texts_SEQ_LENGTH = []
 for s in useful_tokens:
     residual_length = SEQ_LENGTH - len( s )
     music_texts_SEQ_LENGTH.append( s + residual_length*['[PAD]'] )
+    random_texts_SEQ_LENGTH.append( [music_vocab_list[np.random.randint(len(music_vocab_list))] for i in range(SEQ_LENGTH)] )
+
+# print(music_texts_SEQ_LENGTH[0])
+# print(random_texts_SEQ_LENGTH[0])
+# exit()
 
 print('making vocabulary')
 music_tokenizer = keras_nlp.tokenizers.WordPieceTokenizer(
@@ -135,8 +142,12 @@ genre_dict, _ = get_dictionary_and_idxs_from_pd_column( augmented_excel['genre_s
 genre_idx = get_idxs_from_pd_column_and_dictionary( useful_excel['genre_style'] , genre_dict )
 
 print('making dataset')
-music_train_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
-music_train_ds = music_train_ds.batch( BATCH_SIZE )
+# normal music
+music_test_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
+music_test_ds = music_test_ds.batch( BATCH_SIZE )
+# random
+random_test_ds = tf.data.Dataset.from_tensor_slices( (random_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
+random_test_ds = random_test_ds.batch( BATCH_SIZE )
 
 print('making masker and data preprocessing')
 masker = keras_nlp.layers.MaskedLMMaskGenerator(
@@ -161,7 +172,11 @@ def preprocess(inputs, year, style, form, tonality, composer, genre):
     # return features, (year, style, form, labels), weights
     return features, (year, style, form, tonality, composer, genre, labels)
 
-processed_ds = music_train_ds.map(
+processed_ds = music_test_ds.map(
+    preprocess, num_parallel_calls=tf.data.AUTOTUNE
+).prefetch(tf.data.AUTOTUNE)
+# process random dataset
+processed_random_ds = random_test_ds.map(
     preprocess, num_parallel_calls=tf.data.AUTOTUNE
 ).prefetch(tf.data.AUTOTUNE)
 
@@ -287,210 +302,17 @@ model.load_weights(latest)
 
 print('predicting ds')
 y = model.predict( processed_ds )
+print('predicting random ds')
+y_random = model.predict( processed_random_ds )
 
-# sort years and keep indexes
-sort_year_norm_idx = np.argsort( year_norm )
-
-print('plotting year - stats')
-plt.clf()
-plt.plot(np.array(year_norm)[sort_year_norm_idx], 'b.')
-plt.plot(y[0][sort_year_norm_idx], 'rx')
-plt.savefig(figs_path + 'year_sort_plot.png', dpi=300)
-
-print('plotting harmonic style - stats')
-with open(figs_path + 'stats_mask.txt', 'w') as f:
-    print( 'harmonic style accuracy: \n' + str(np.sum( np.array(harmonic_style_idx) == np.argmax(y[1], axis=1) ) / len(harmonic_style_idx)), file=f )
-    print( 'missed: ' + str(len(harmonic_style_idx) - np.sum( np.array(harmonic_style_idx) == np.argmax(y[1], axis=1) ) ) + '\n', file=f )
-plt.clf()
-plt.plot(harmonic_style_idx, 'bo')
-plt.plot(np.argmax(y[1], axis=1), 'rx', alpha=0.5)
-plt.savefig(figs_path + 'harmonic_style_accuracy.png', dpi=300)
-
-print('plotting form - stats')
-with open(figs_path + 'stats_mask.txt', 'a') as f:
-    print( '\n' + 'form accuracy: \n' + str(np.sum( np.array(form_idx) == np.argmax(y[2], axis=1) ) / len(form_idx)), file=f )
-    print( 'missed: ' + str(len(form_idx) - np.sum( np.array(form_idx) == np.argmax(y[2], axis=1) ) ) + '\n', file=f )
-plt.clf()
-plt.plot(form_idx, 'bo')
-plt.plot(np.argmax(y[2], axis=1), 'rx')
-plt.savefig(figs_path + 'harmonic_style_accuracy.png', dpi=300)
-
-print('plotting tonality - stats')
-with open(figs_path + 'stats_mask.txt', 'a') as f:
-    print( '\n' + 'tonality accuracy: \n' + str(np.sum( np.array(tonality_idx) == np.argmax(y[3], axis=1) ) / len(tonality_idx)), file=f )
-    print( 'missed: ' + str(len(tonality_idx) - np.sum( np.array(tonality_idx) == np.argmax(y[3], axis=1) ) ) + '\n', file=f )
-plt.clf()
-plt.plot(tonality_idx, 'bo')
-plt.plot(np.argmax(y[3], axis=1), 'rx')
-plt.savefig(figs_path + 'tonality_idx_accuracy.png', dpi=300)
-
-# sort composers and keep indexes
-sort_composers_norm_idx = np.argsort( composer_idx )
-print('plotting composer - stats')
-with open(figs_path + 'stats_mask.txt', 'a') as f:
-    print( '\n' + 'composer accuracy: \n' + str(np.sum( np.array(composer_idx) == np.argmax(y[4], axis=1) ) / len(composer_idx)), file=f )
-    print( 'missed: ' + str(len(composer_idx) - np.sum( np.array(composer_idx) == np.argmax(y[4], axis=1) ) ) + '\n', file=f )
-plt.clf()
-plt.plot(np.array(composer_idx)[sort_composers_norm_idx], 'bo')
-plt.plot(np.argmax(y[4][sort_composers_norm_idx], axis=1), 'rx')
-plt.savefig(figs_path + 'composer_idx_accuracy.png', dpi=300)
-
-print('plotting genre - stats')
-with open(figs_path + 'stats_mask.txt', 'a') as f:
-    print( '\n' + 'genre accuracy: \n' + str(np.sum( np.array(genre_idx) == np.argmax(y[5], axis=1) ) / len(genre_idx)), file=f )
-    print( 'missed: ' + str(len(genre_idx) - np.sum( np.array(genre_idx) == np.argmax(y[5], axis=1) ) ) + '\n', file=f )
-plt.clf()
-plt.plot(genre_idx, 'bo')
-plt.plot(np.argmax(y[5], axis=1), 'rx')
-plt.savefig(figs_path + 'genre_idx_accuracy.png', dpi=300)
-
-print('post encoding - TSNE plot')
+print('post encoding - running')
 y_post_encoding = model_post_encoding.predict( processed_ds )
-post_encoding_embedded = TSNE(n_components=2).fit_transform(y_post_encoding)
-plt.clf()
-post_encoding_cols = cm.rainbow(np.zeros(post_encoding_embedded.shape[0]))
-for i in range(post_encoding_embedded.shape[0]):
-    plt.plot(post_encoding_embedded[i,0], post_encoding_embedded[i,1],'x', c=post_encoding_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'post_encoding_TSNE.png', dpi=300)
+y_random_post_encoding = model_post_encoding.predict( processed_random_ds )
 
-print('year predict - TSNE plot')
-y_year = model_year.predict( processed_ds )
-year_embedded = TSNE(n_components=2).fit_transform(y_year)
-plt.clf()
-year_cols = cm.rainbow(year_norm)
-for i in range(year_embedded.shape[0]):
-    plt.plot(year_embedded[i,0], year_embedded[i,1],'x', c=year_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'year_TSNE.png', dpi=300)
 
-print('harmonic style predict - TSNE plot')
-y_harmonic_style = model_style.predict( processed_ds )
-harmonic_style_embedded = TSNE(n_components=2).fit_transform(y_harmonic_style)
-plt.clf()
-harmonic_style_cols = cm.rainbow(harmonic_style_idx/np.max(harmonic_style_idx))
-for i in range(harmonic_style_embedded.shape[0]):
-    plt.plot(harmonic_style_embedded[i,0], harmonic_style_embedded[i,1],'x', c=harmonic_style_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'harmonic_style_TSNE.png', dpi=300)
-
-print('form predict - TSNE plot')
-y_form = model_form.predict( processed_ds )
-form_embedded = TSNE(n_components=2).fit_transform(y_form)
-plt.clf()
-form_cols = cm.rainbow(form_idx/np.max(form_idx))
-for i in range(form_embedded.shape[0]):
-    plt.plot(form_embedded[i,0], form_embedded[i,1],'x', c=form_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'form_TSNE.png', dpi=300)
-
-print('tonality predict - TSNE plot')
-y_tonality = model_tonality.predict( processed_ds )
-tonality_embedded = TSNE(n_components=2).fit_transform(y_tonality)
-plt.clf()
-tonality_cols = cm.rainbow(tonality_idx/np.max(tonality_idx))
-for i in range(tonality_embedded.shape[0]):
-    plt.plot(tonality_embedded[i,0], tonality_embedded[i,1],'x', c=tonality_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'tonality_TSNE.png', dpi=300)
-
-print('composer predict - TSNE plot')
-y_composer = model_composer.predict( processed_ds )
-composer_embedded = TSNE(n_components=2).fit_transform(y_composer)
-plt.clf()
-composer_cols = cm.rainbow(composer_idx/np.max(composer_idx))
-for i in range(composer_embedded.shape[0]):
-    plt.plot(composer_embedded[i,0], composer_embedded[i,1],'x', c=composer_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'composer_TSNE.png', dpi=300)
-
-print('genre predict - TSNE plot')
-y_genre = model_genre.predict( processed_ds )
-genre_embedded = TSNE(n_components=2).fit_transform(y_genre)
-plt.clf()
-genre_cols = cm.rainbow(genre_idx/np.max(genre_idx))
-for i in range(genre_embedded.shape[0]):
-    plt.plot(genre_embedded[i,0], genre_embedded[i,1],'x', c=genre_cols[i])
-ax = plt.gca()
-ax.set_xticks([])
-ax.set_yticks([])
-plt.savefig(figs_path + 'genre_TSNE.png', dpi=300)
-
-print('plotting history')
-import copy
-history_normalized = copy.deepcopy(history)
-for l in ['year_predictor_loss','form_predictor_loss','style_predictor_loss', 'tonality_predictor_loss', 'composer_predictor_loss', 'genre_predictor_loss', 'mask_predictor_loss']:
-    history_normalized[l] = history_normalized[l]/np.max(history_normalized[l])
-ax = history_normalized.plot(x='epoch', y=['year_predictor_loss', 'form_predictor_loss', 'style_predictor_loss', 'tonality_predictor_loss', 'composer_predictor_loss', 'genre_predictor_loss', 'mask_predictor_loss'])
-ax.figure.savefig(figs_path + 'history_losses.png', dpi=300)
-
-ax = history.plot(x='epoch', y=['form_predictor_sparse_categorical_accuracy', 'style_predictor_sparse_categorical_accuracy', 'tonality_predictor_sparse_categorical_accuracy', 'composer_predictor_sparse_categorical_accuracy', 'genre_predictor_sparse_categorical_accuracy', 'mask_predictor_sparse_categorical_accuracy'])
-ax.figure.savefig(figs_path + 'history_accuracies.png', dpi=300)
-
-# history loss of train / validation for year
-history_train_validation_year = pd.DataFrame()
-history_train_validation_year['epoch'] = history['epoch']
-for l in ['year_predictor_loss', 'val_year_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss']:
-    history_train_validation_year[l] = history[l]/np.max(history[l])
-
-ax = history_train_validation_year.plot(x='epoch', y=['year_predictor_loss', 'val_year_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss'])
-ax.figure.savefig(figs_path + 'history_year_train_val_losses.png', dpi=300)
-
-# history loss of train / validation for composer
-history_train_validation_composer = pd.DataFrame()
-history_train_validation_composer['epoch'] = history['epoch']
-for l in ['composer_predictor_loss', 'val_composer_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss']:
-    history_train_validation_year[l] = history[l]/np.max(history[l])
-
-ax = history_train_validation_year.plot(x='epoch', y=['composer_predictor_loss', 'val_composer_predictor_loss', 'mask_predictor_loss', 'val_mask_predictor_loss'])
-ax.figure.savefig(figs_path + 'history_composer_train_val_losses.png', dpi=300)
-
-print('exporting data')
-
-mask_visualization_data = {
-    'post_encoding': {
-        'coordinates': post_encoding_embedded,
-        'colors': post_encoding_cols
-    },
-    'year': {
-        'coordinates': year_embedded,
-        'colors': year_cols
-    },
-    'style': {
-        'coordinates': harmonic_style_embedded,
-        'colors': harmonic_style_cols
-    },
-    'form': {
-        'coordinates': form_embedded,
-        'colors': form_cols
-    },
-    'tonality': {
-        'coordinates': tonality_embedded,
-        'colors': tonality_cols
-    },
-    'composer': {
-        'coordinates': composer_embedded,
-        'colors': composer_cols
-    },
-    'genre': {
-        'coordinates': genre_embedded,
-        'colors': genre_cols
-    },
-    'titles': list(useful_excel['Title'])
-}
-
-visualization_data_path =  'data/transposition_visualization_data.pickle'
-with open(visualization_data_path, 'wb') as handle:
-    pickle.dump(mask_visualization_data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+entropy_songs_data_path =  'data/entropy/songs_post_encoding_songs.pickle'
+entropy_random_data_path =  'data/entropy/random_post_encoding.pickle'
+with open(entropy_songs_data_path, 'wb') as handle:
+    pickle.dump(y_post_encoding, handle, protocol=pickle.HIGHEST_PROTOCOL)
+with open(entropy_random_data_path, 'wb') as handle:
+    pickle.dump(y_random_post_encoding, handle, protocol=pickle.HIGHEST_PROTOCOL)
