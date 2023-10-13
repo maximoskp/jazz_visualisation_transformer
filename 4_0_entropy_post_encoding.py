@@ -7,6 +7,7 @@ import numpy as np
 import keras_nlp
 import pandas as pd
 from copy import deepcopy
+import random
 
 import sys
 if sys.version_info >= (3,8):
@@ -89,14 +90,16 @@ BATCH_SIZE = 16
 print('padding to sequence length')
 # create normal music and random strings
 music_texts_SEQ_LENGTH = []
+shuffle_texts_SEQ_LENGTH = []
 random_texts_SEQ_LENGTH = []
 for s in useful_tokens:
     residual_length = SEQ_LENGTH - len( s )
     music_texts_SEQ_LENGTH.append( s + residual_length*['[PAD]'] )
+    shuffle_texts_SEQ_LENGTH.append( random.sample(s, len(s)) + residual_length*['[PAD]'] )
     random_texts_SEQ_LENGTH.append( [music_vocab_list[np.random.randint(len(music_vocab_list))] for i in range(SEQ_LENGTH)] )
 
 # print(music_texts_SEQ_LENGTH[0])
-# print(random_texts_SEQ_LENGTH[0])
+# print(shuffle_texts_SEQ_LENGTH[0])
 # exit()
 
 print('making vocabulary')
@@ -145,6 +148,9 @@ print('making dataset')
 # normal music
 music_test_ds = tf.data.Dataset.from_tensor_slices( (music_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
 music_test_ds = music_test_ds.batch( BATCH_SIZE )
+# shuffle
+shuffle_test_ds = tf.data.Dataset.from_tensor_slices( (shuffle_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
+shuffle_test_ds = shuffle_test_ds.batch( BATCH_SIZE )
 # random
 random_test_ds = tf.data.Dataset.from_tensor_slices( (random_texts_SEQ_LENGTH, year_norm, harmonic_style_idx, form_idx, tonality_idx, composer_idx, genre_idx) )
 random_test_ds = random_test_ds.batch( BATCH_SIZE )
@@ -173,6 +179,10 @@ def preprocess(inputs, year, style, form, tonality, composer, genre):
     return features, (year, style, form, tonality, composer, genre, labels)
 
 processed_ds = music_test_ds.map(
+    preprocess, num_parallel_calls=tf.data.AUTOTUNE
+).prefetch(tf.data.AUTOTUNE)
+# process shuffled dataset
+processed_shuffle_ds = shuffle_test_ds.map(
     preprocess, num_parallel_calls=tf.data.AUTOTUNE
 ).prefetch(tf.data.AUTOTUNE)
 # process random dataset
@@ -207,6 +217,10 @@ for i in range(NUM_LAYERS):
 
 encoder_model = keras.Model(inputs, outputs)
 # encoder_model.summary()
+
+# transformer encoder layers from indexes 4 to 11
+print(encoder_model.layers[4].weights)
+exit()
 
 tf.keras.utils.plot_model(encoder_model, show_shapes=True, expand_nested=True, to_file=figs_path + 'transformer_base.png')
 
@@ -302,17 +316,23 @@ model.load_weights(latest)
 
 print('predicting ds')
 y = model.predict( processed_ds )
+print('predicting shuffled ds')
+y_shuffle = model.predict( processed_shuffle_ds )
 print('predicting random ds')
 y_random = model.predict( processed_random_ds )
 
 print('post encoding - running')
 y_post_encoding = model_post_encoding.predict( processed_ds )
+y_shuffle_post_encoding = model_post_encoding.predict( processed_shuffle_ds )
 y_random_post_encoding = model_post_encoding.predict( processed_random_ds )
 
 
 entropy_songs_data_path =  'data/entropy/songs_post_encoding_songs.pickle'
+entropy_shuffle_data_path =  'data/entropy/shuffle_post_encoding.pickle'
 entropy_random_data_path =  'data/entropy/random_post_encoding.pickle'
 with open(entropy_songs_data_path, 'wb') as handle:
     pickle.dump(y_post_encoding, handle, protocol=pickle.HIGHEST_PROTOCOL)
+with open(entropy_shuffle_data_path, 'wb') as handle:
+    pickle.dump(y_shuffle_post_encoding, handle, protocol=pickle.HIGHEST_PROTOCOL)
 with open(entropy_random_data_path, 'wb') as handle:
     pickle.dump(y_random_post_encoding, handle, protocol=pickle.HIGHEST_PROTOCOL)
